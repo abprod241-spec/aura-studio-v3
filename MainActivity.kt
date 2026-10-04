@@ -1,7 +1,11 @@
 package com.laparole.aurastudio
 
+import android.content.ContentValues
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
+import android.os.Environment
+import android.provider.MediaStore
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
@@ -22,37 +26,61 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
-import kotlin.system.exitProcess
 
 class MainActivity : ComponentActivity() {
 
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        val crashFile = File(filesDir, "crash.txt")
-        Thread.setDefaultUncaughtExceptionHandler { _, e ->
-            runCatching { crashFile.writeText(e.stackTraceToString().take(2500)) }
-            exitProcess(1)
+    private fun saveCrash(e: Throwable) {
+        val txt = e.stackTraceToString().take(3000)
+        runCatching { File(filesDir, "crash.txt").writeText(txt) }
+        runCatching {
+            val cv = ContentValues()
+            cv.put(MediaStore.Downloads.DISPLAY_NAME, "AURA_CRASH.txt")
+            cv.put(MediaStore.Downloads.MIME_TYPE, "text/plain")
+            if (Build.VERSION.SDK_INT >= 29) {
+                cv.put(MediaStore.Downloads.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS)
+            }
+            val u = contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, cv)
+            if (u != null) {
+                contentResolver.openOutputStream(u)?.use { it.write(txt.toByteArray()) }
+            }
         }
-        val lastCrash = if (crashFile.exists()) crashFile.readText() else null
-        crashFile.delete()
-        setContent {
-            MaterialTheme(colorScheme = darkColorScheme()) {
-                Surface(modifier = Modifier.fillMaxSize()) {
-                    if (lastCrash != null) CrashScreen(lastCrash) else AuraScreen()
+    }
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        Thread.setDefaultUncaughtExceptionHandler { _, e ->
+            saveCrash(e)
+            android.os.Process.killProcess(android.os.Process.myPid())
+        }
+        super.onCreate(savedInstanceState)
+
+        val f = File(filesDir, "crash.txt")
+        val last = if (f.exists()) f.readText() else null
+        f.delete()
+
+        try {
+            setContent {
+                MaterialTheme(colorScheme = darkColorScheme()) {
+                    Surface(modifier = Modifier.fillMaxSize()) {
+                        if (last != null) Report(last) else AuraScreen()
+                    }
                 }
             }
+        } catch (e: Throwable) {
+            saveCrash(e)
+            setContent { Report(e.stackTraceToString().take(3000)) }
         }
     }
 }
 
 @Composable
-fun CrashScreen(text: String) {
+fun Report(text: String) {
     Column(
-        modifier = Modifier.fillMaxSize().padding(16.dp).verticalScroll(rememberScrollState())
+        modifier = Modifier.fillMaxSize().padding(12.dp).verticalScroll(rememberScrollState())
     ) {
-        Text(text = "Plantage precedent", style = MaterialTheme.typography.titleMedium)
-        Spacer(modifier = Modifier.height(12.dp))
-        Text(text = text, fontSize = 11.sp)
+        Text(text = "RAPPORT", fontSize = 16.sp)
+        Text(text = "copie aussi dans Telechargements / AURA_CRASH.txt", fontSize = 10.sp)
+        Spacer(modifier = Modifier.height(10.dp))
+        Text(text = text, fontSize = 10.sp)
     }
 }
 
@@ -87,10 +115,10 @@ fun AuraScreen() {
         if (uri != null) {
             busy = true
             scope.launch {
-                val f = withContext(Dispatchers.IO) { AuraEngine.importAudio(context, uri) }
-                music = f
+                val fi = withContext(Dispatchers.IO) { AuraEngine.importAudio(context, uri) }
+                music = fi
                 busy = false
-                status = if (f != null) "Musique accueillie." else "Musique illisible."
+                status = if (fi != null) "Musique accueillie." else "Musique illisible."
             }
         }
     }
@@ -100,13 +128,10 @@ fun AuraScreen() {
         verticalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterVertically),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Text(text = "AURA", style = MaterialTheme.typography.headlineLarge)
+        Text(text = "AURA", fontSize = 34.sp)
         Text(text = "Studio de l'instant", fontSize = 13.sp)
-        Spacer(modifier = Modifier.height(4.dp))
         Text(text = status, textAlign = TextAlign.Center)
         if (busy) CircularProgressIndicator()
-
-        Spacer(modifier = Modifier.height(4.dp))
 
         Button(
             enabled = !busy,
@@ -122,7 +147,7 @@ fun AuraScreen() {
             enabled = !busy,
             modifier = Modifier.fillMaxWidth(),
             onClick = { audioPicker.launch("audio/*") }
-        ) { Text(text = if (music == null) "MA MUSIQUE" else "MA MUSIQUE  \u2022") }
+        ) { Text(text = if (music == null) "MA MUSIQUE" else "MA MUSIQUE  *") }
 
         if (music != null) {
             TextButton(
@@ -131,7 +156,6 @@ fun AuraScreen() {
             ) { Text(text = "retirer la musique") }
         }
 
-        Spacer(modifier = Modifier.height(4.dp))
         Text(text = "RESSENTIR", fontSize = 12.sp)
 
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -143,8 +167,6 @@ fun AuraScreen() {
                 }
             }
         }
-
-        Spacer(modifier = Modifier.height(8.dp))
 
         Button(
             enabled = !busy && media.isNotEmpty(),
