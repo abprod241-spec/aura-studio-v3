@@ -9,8 +9,8 @@ android {
         applicationId = "com.laparole.aurastudio"
         minSdk = 26
         targetSdk = 34
-        versionCode = 6
-        versionName = "0.8"
+        versionCode = 7
+        versionName = "0.9"
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
@@ -24,8 +24,12 @@ android {
 dependencies {
     implementation("androidx.core:core-ktx:1.13.1")
     implementation("androidx.activity:activity-compose:1.9.0")
+    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.2")
+    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.2")
     implementation(platform("androidx.compose:compose-bom:2024.06.00"))
     implementation("androidx.compose.ui:ui")
+    implementation("androidx.compose.ui:ui-graphics")
+    implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("androidx.compose.foundation:foundation")
     implementation("androidx.compose.material3:material3")
     implementation("androidx.media3:media3-transformer:1.4.1")
